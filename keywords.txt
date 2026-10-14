@@ -1,0 +1,60 @@
+#######################################
+# Datatypes (KEYWORD1)
+#######################################
+CytronMakerSumoRP2350	KEYWORD1
+MakerSumo	KEYWORD1
+
+#######################################
+# Methods and Functions (KEYWORD2)
+#######################################
+begin	KEYWORD2
+readDipSwitch	KEYWORD2
+isStartPressed	KEYWORD2
+irStartActive	KEYWORD2
+readOpponents	KEYWORD2
+readBatteryVoltage	KEYWORD2
+motorFault	KEYWORD2
+stop	KEYWORD2
+moveForward	KEYWORD2
+moveBackward	KEYWORD2
+turnLeft	KEYWORD2
+turnRight	KEYWORD2
+setMotorSpeed	KEYWORD2
+playTone	KEYWORD2
+playMelody	KEYWORD2
+applyUsbIdentity	KEYWORD2
+printIdentity	KEYWORD2
+
+#######################################
+# Constants (LITERAL1)
+#######################################
+MAKER_SUMO_RP2350_LIB_VERSION	LITERAL1
+MAKER_SUMO_USB_VID	LITERAL1
+MAKER_SUMO_USB_PID	LITERAL1
+USR_BTN	LITERAL1
+START	LITERAL1
+LED	LITERAL1
+DIP1	LITERAL1
+DIP2	LITERAL1
+DIP3	LITERAL1
+BUZZER	LITERAL1
+OPP_L	LITERAL1
+OPP_FL	LITERAL1
+OPP_FC	LITERAL1
+OPP_FR	LITERAL1
+OPP_R	LITERAL1
+PWM_L	LITERAL1
+DIR_L	LITERAL1
+PWM_R	LITERAL1
+DIR_R	LITERAL1
+FAULT_L	LITERAL1
+FAULT_R	LITERAL1
+SERVO1	LITERAL1
+SERVO2	LITERAL1
+IRST	LITERAL1
+EDGE_L	LITERAL1
+EDGE_R	LITERAL1
+POT	LITERAL1
+VM_SENSE	LITERAL1
+MOTOR_L	LITERAL1
+MOTOR_R	LITERAL1
