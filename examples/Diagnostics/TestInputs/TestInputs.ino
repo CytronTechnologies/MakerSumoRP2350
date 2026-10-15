@@ -17,8 +17,7 @@
  * EMAIL    : support@cytron.io
  *
  *******************************************************************************/
-
-// Prints every input once 250ms. 
+ 
 #include <MakerSumoRP2350.h>
 
 void setup() {

@@ -37,6 +37,10 @@ Connections are described in the comment section of each example.
 Examples are grouped as **Basics**, **Sensors**, **Sumo** and **Diagnostics**. Work through them in order.
 
 ### Basics
+#### 0. Default
+The program loaded at the factory: the user LED blinks every 500 ms while the buzzer plays the Cytron startup chime.<br>
+Press START to play the chime again. Upload this to return the board to its out-of-the-box state.
+
 #### 1. Blink
 Flashes the on-board LED and plays a melody on the buzzer.<br>
 The first sketch to try: it confirms the core, board and library are installed.
@@ -67,7 +71,8 @@ Shows START and STOP from a competition IR start module on the `IRST` pin, with 
 ### Sumo
 #### 8. AutoSumo
 A complete autonomous sumo program in plain code with all tuning values at the top.<br>
-Searches, pushes when the opponent is seen and backs away from the border. Starts from the button (5 s countdown) or the IR module.
+Searches, pushes when the opponent is seen and backs away from the border. Starts from the button (5 s countdown) or the IR module.<br>
+Hold START while powering on to calibrate the edge sensors (black surface, then white line); the values are kept in flash.
 
 #### 9. RcSumo
 Drives the robot from an RC transmitter connected to `SERVO1` (throttle) and `SERVO2` (steering).<br>
@@ -75,7 +80,8 @@ DIP positions LHL and HLH enable live motor alignment with the potentiometer; ho
 
 #### 10. AutoRcSumo
 The full firmware: DIP-selectable opening strategies, a defense routine on DIP 5, RC driving on DIP 7, edge escape, and all settings stored in flash.<br>
-Settings can be changed over USB with the Web Serial configurator (protocol 6).
+Settings can be changed over USB with the Web Serial configurator (protocol 6).<br>
+Hold START while powering on to calibrate the edge sensors. The DIP switches can be changed whenever the robot is idle.
 
 ### Diagnostics
 #### 11. TestInputs
@@ -97,6 +103,11 @@ bool    MakerSumo.irStartActive();       // IR start module signalling START
 uint8_t MakerSumo.readOpponents();       // bit0 L, bit1 FL, bit2 FC, bit3 FR, bit4 R
 float   MakerSumo.readBatteryVoltage();  // volts
 bool    MakerSumo.motorFault();          // true if a motor driver reports a fault
+
+bool    MakerSumo.calibrateEdgeSensors();          // interactive: START on black, START on white; saved to flash
+bool    MakerSumo.loadEdgeCalibration();           // call in setup(); false if not calibrated yet
+void    MakerSumo.updateEdgeThresholds(int sens);  // 25-75, call at match start (pot value works well)
+bool    MakerSumo.isEdgeDetected(EDGE_L);          // or EDGE_R
 
 void    MakerSumo.stop();
 void    MakerSumo.moveForward(int speed);          // speed 0-255

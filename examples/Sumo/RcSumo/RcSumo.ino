@@ -165,10 +165,10 @@ void updateModeSound(uint8_t mode) {
     previousMode = mode;
     if (mode == MODE_FORWARD_ALIGNMENT) {
         MakerSumo.stop();
-        MakerSumo.playTone(NOTE_G5, 120);                  // one beep
+        MakerSumo.playTone(NOTE_G5, 120);                  
     } else if (mode == MODE_BACKWARD_ALIGNMENT) {
         MakerSumo.stop();
-        MakerSumo.playTone(NOTE_C5, 90); delay(70);        // two beeps
+        MakerSumo.playTone(NOTE_C5, 90); delay(70);        
         MakerSumo.playTone(NOTE_C5, 90);
     }
 }
@@ -196,7 +196,7 @@ bool handleSaveButton(uint8_t mode, int8_t liveTrim) {
 void updateLed(uint8_t mode, bool motorsMoving) {
     unsigned long now = millis();
     if (saveFlashStartedAt != 0 && now - saveFlashStartedAt < SAVE_FLASH_MS) {
-        digitalWrite(LED, ((now - saveFlashStartedAt) / 80) % 2);   // fast flash after save
+        digitalWrite(LED, ((now - saveFlashStartedAt) / 80) % 2);   
         return;
     }
     saveFlashStartedAt = 0;

@@ -1,4 +1,5 @@
 #include "MakerSumoRP2350.h"
+#include <EEPROM.h>
 
 #ifdef USE_TINYUSB
   #include <Adafruit_TinyUSB.h>
@@ -169,4 +170,113 @@ void CytronMakerSumoRP2350::printIdentity(Stream &out) {
     out.print(MAKER_SUMO_USB_PID, HEX);
     out.print(F(" LIB="));
     out.print(MAKER_SUMO_RP2350_LIB_VERSION);
+}
+
+// ---- Edge sensor calibration (EEPROM 0-11) ----------------------------------
+// 0: magic 0xED, 1: version, 2-3 blackL, 4-5 blackR, 6-7 whiteL, 8-9 whiteR, 10: checksum
+static const int     EDGE_EEPROM_ADDR    = 0;
+static const uint8_t EDGE_EEPROM_MAGIC   = 0xED;
+static const uint8_t EDGE_EEPROM_VERSION = 1;
+static const int     EDGE_MIN_CONTRAST   = 40;    // black - white must be at least this
+
+static void eepromEnsureBegun() {
+    if (EEPROM.length() == 0) EEPROM.begin(512);
+}
+
+int CytronMakerSumoRP2350::readEdgeAverage(uint8_t pin, int samples) {
+    long sum = 0;
+    for (int i = 0; i < samples; i++) { sum += analogRead(pin); delay(2); }
+    return (int)(sum / samples);
+}
+
+void CytronMakerSumoRP2350::waitForStartPress(bool blinkLed) {
+    while (isStartPressed()) delay(10);                       // wait for release
+    while (!isStartPressed()) {
+        digitalWrite(LED, blinkLed ? ((millis() / 250) % 2) : HIGH);
+        delay(10);
+    }
+    delay(30);                                                // debounce
+    while (isStartPressed()) delay(10);
+}
+
+bool CytronMakerSumoRP2350::calibrateEdgeSensors() {
+    stop();
+    playTone(NOTE_C5, 80); delay(40); playTone(NOTE_C5, 80);  // entering calibration
+
+    waitForStartPress(false);                                 // LED solid: robot on BLACK
+    int bL = readEdgeAverage(EDGE_L), bR = readEdgeAverage(EDGE_R);
+    playTone(NOTE_G5, 120);
+
+    waitForStartPress(true);                                  // LED blinking: sensors on WHITE
+    int wL = readEdgeAverage(EDGE_L), wR = readEdgeAverage(EDGE_R);
+    playTone(NOTE_G5, 80); delay(40); playTone(NOTE_G5, 80);
+
+    digitalWrite(LED, LOW);
+    if (!saveEdgeCalibration(bL, bR, wL, wR)) {
+        playTone(NOTE_C4, 400);                               // low tone: not enough contrast
+        return false;
+    }
+    playTone(NOTE_E5, 60); delay(30); playTone(NOTE_G5, 60); delay(30); playTone(NOTE_C6, 120);
+    return true;
+}
+
+bool CytronMakerSumoRP2350::saveEdgeCalibration(int blackL, int blackR, int whiteL, int whiteR) {
+    if (blackL - whiteL < EDGE_MIN_CONTRAST || blackR - whiteR < EDGE_MIN_CONTRAST) return false;
+    eepromEnsureBegun();
+    uint8_t buf[11] = { EDGE_EEPROM_MAGIC, EDGE_EEPROM_VERSION,
+        (uint8_t)(blackL & 0xFF), (uint8_t)(blackL >> 8), (uint8_t)(blackR & 0xFF), (uint8_t)(blackR >> 8),
+        (uint8_t)(whiteL & 0xFF), (uint8_t)(whiteL >> 8), (uint8_t)(whiteR & 0xFF), (uint8_t)(whiteR >> 8), 0 };
+    uint8_t sum = 0;
+    for (int i = 2; i < 10; i++) sum += buf[i];
+    buf[10] = sum;
+    for (int i = 0; i < 11; i++) {
+        if (EEPROM.read(EDGE_EEPROM_ADDR + i) != buf[i]) EEPROM.write(EDGE_EEPROM_ADDR + i, buf[i]);
+    }
+    EEPROM.commit();
+    _blackL = blackL; _blackR = blackR; _whiteL = whiteL; _whiteR = whiteR;
+    _edgeCalibrated = true;
+    return true;
+}
+
+bool CytronMakerSumoRP2350::loadEdgeCalibration() {
+    eepromEnsureBegun();
+    _edgeCalibrated = false;
+    if (EEPROM.read(EDGE_EEPROM_ADDR) != EDGE_EEPROM_MAGIC ||
+        EEPROM.read(EDGE_EEPROM_ADDR + 1) != EDGE_EEPROM_VERSION) return false;
+    uint8_t b[8], sum = 0;
+    for (int i = 0; i < 8; i++) { b[i] = EEPROM.read(EDGE_EEPROM_ADDR + 2 + i); sum += b[i]; }
+    if (EEPROM.read(EDGE_EEPROM_ADDR + 10) != sum) return false;
+    int bL = b[0] | (b[1] << 8), bR = b[2] | (b[3] << 8), wL = b[4] | (b[5] << 8), wR = b[6] | (b[7] << 8);
+    if (bL > 1023 || bR > 1023 || wL > 1023 || wR > 1023 ||
+        bL - wL < EDGE_MIN_CONTRAST || bR - wR < EDGE_MIN_CONTRAST) return false;
+    _blackL = bL; _blackR = bR; _whiteL = wL; _whiteR = wR;
+    _edgeCalibrated = true;
+    return true;
+}
+
+void CytronMakerSumoRP2350::getEdgeCalibration(int &blackL, int &blackR, int &whiteL, int &whiteR) const {
+    blackL = _edgeCalibrated ? _blackL : 0;
+    blackR = _edgeCalibrated ? _blackR : 0;
+    whiteL = _edgeCalibrated ? _whiteL : 0;
+    whiteR = _edgeCalibrated ? _whiteR : 0;
+}
+
+void CytronMakerSumoRP2350::updateEdgeThresholds(int sensitivity) {
+    sensitivity = constrain(sensitivity, 1, 99);
+    if (_edgeCalibrated) {
+        _thresholdL = _whiteL + (long)(_blackL - _whiteL) * sensitivity / 100;
+        _thresholdR = _whiteR + (long)(_blackR - _whiteR) * sensitivity / 100;
+    } else {
+        // No calibration: assume we are on black now; white = 0.
+        _thresholdL = (long)readEdgeAverage(EDGE_L, 8) * sensitivity / 100;
+        _thresholdR = (long)readEdgeAverage(EDGE_R, 8) * sensitivity / 100;
+    }
+}
+
+int CytronMakerSumoRP2350::edgeThreshold(uint8_t pin) {
+    return pin == EDGE_L ? _thresholdL : _thresholdR;
+}
+
+bool CytronMakerSumoRP2350::isEdgeDetected(uint8_t pin) {
+    return analogRead(pin) < edgeThreshold(pin);
 }

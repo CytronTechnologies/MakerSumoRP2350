@@ -6,10 +6,11 @@
  ********************************************************************************
  * DESCRIPTION:
  *
- * This example is a complete, easy-to-read autonomous sumo program.
- * Change the constants at the top to tune it. Power on with the robot on
- * the black surface, then press START for a 5 s countdown or use an IR
- * start module. The robot searches, pushes when it sees the opponent and
+ * This example is a complete autonomous sumo program.
+ * Change the constants at the top to tune it. Calibrate the edge sensors
+ * once by holding START while powering on (black surface, then white
+ * line). After that, press START for a 5 s countdown or use an IR start
+ * module. The robot searches, pushes when it sees the opponent and
  * backs away from the white border. For adjustable strategies and the USB
  * configurator, see Sumo/AutoRcSumo.
  *
@@ -33,13 +34,14 @@ const int ESCAPE_TURN_MS  = 300;
 const int COUNTDOWN_MS    = 5000;
 
 // ---- State -------------------------------------------------------------
-int  thresholdL, thresholdR;
 bool startedByIr = false;
 
 void calibrateEdges() {
-    int sensitivity = map(analogRead(POT), 0, 1023, 25, 75);   // % of black reading
-    thresholdL = analogRead(EDGE_L) * sensitivity / 100;
-    thresholdR = analogRead(EDGE_R) * sensitivity / 100;
+    // Threshold sits between the stored white and black values; the pot moves
+    // it (25 % = close to white, 75 % = close to black). Without a stored
+    // calibration the surface under the robot now is taken as black.
+    int sensitivity = map(analogRead(POT), 0, 1023, 25, 75);
+    MakerSumo.updateEdgeThresholds(sensitivity);
 }
 
 void waitForStart() {
@@ -78,20 +80,23 @@ void escapeEdge(bool leftSide) {
 
 void setup() {
     MakerSumo.begin();
+    // Hold START while powering on to calibrate the edge sensors:
+    //   LED on      -> place the robot on the black surface, press START
+    //   LED blinks  -> place both edge sensors on the white line, press START
+    if (MakerSumo.isStartPressed()) MakerSumo.calibrateEdgeSensors();
+    MakerSumo.loadEdgeCalibration();
     waitForStart();
 }
 
 void loop() {
-    // Stop command from the IR module ends the match.
     if (startedByIr && !MakerSumo.irStartActive()) {
         MakerSumo.stop();
         digitalWrite(LED, LOW);
         while (true) delay(100);
     }
 
-    // Edge first: never drive off the ring.
-    bool edgeL = analogRead(EDGE_L) < thresholdL;
-    bool edgeR = analogRead(EDGE_R) < thresholdR;
+    bool edgeL = MakerSumo.isEdgeDetected(EDGE_L);
+    bool edgeR = MakerSumo.isEdgeDetected(EDGE_R);
     if (edgeL || edgeR) {
         escapeEdge(edgeL);
         return;

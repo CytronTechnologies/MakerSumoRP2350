@@ -57,7 +57,7 @@ void beginRcCapture() {
     pinMode(RC_SPEED, INPUT_PULLUP);
     pinMode(RC_STEERING, INPUT_PULLUP);
     uint32_t now = micros();
-    if (digitalRead(RC_SPEED))    rcSpeed.riseAt = now;      // mid-pulse at boot
+    if (digitalRead(RC_SPEED))    rcSpeed.riseAt = now;      
     if (digitalRead(RC_STEERING)) rcSteering.riseAt = now;
     attachInterrupt(digitalPinToInterrupt(RC_SPEED), rcSpeedIsr, CHANGE);
     attachInterrupt(digitalPinToInterrupt(RC_STEERING), rcSteeringIsr, CHANGE);
@@ -127,7 +127,6 @@ bool configSession = false, attacking = false;
 bool rcChannelsSwapped = false;
 uint8_t selectedMode = 0, stepIndex = 0, defenseCount = 0;
 bool turnRight = true;
-int edgeLeftThreshold = 0, edgeRightThreshold = 0;
 int8_t forwardTrim = 0, backwardTrim = 0;
 char serialLine[192];
 uint8_t serialLength = 0;
@@ -279,10 +278,11 @@ void loadSettings() {
 
 // ---- Match flow -------------------------------------------------------------
 void startOpening() {
+    // Threshold between the calibrated white and black values; POT moves it.
+    // Without a stored calibration the surface under the robot is taken as black.
     int edgeSensitivity = map(analogRead(POT), 0, 1023,
                               EDGE_SENSITIVITY_MIN_PERCENT, EDGE_SENSITIVITY_MAX_PERCENT);
-    edgeLeftThreshold  = analogRead(EDGE_L) * (long)edgeSensitivity / 100;
-    edgeRightThreshold = analogRead(EDGE_R) * (long)edgeSensitivity / 100;
+    MakerSumo.updateEdgeThresholds(edgeSensitivity);
     stepIndex = defenseCount = 0;
     enterState(selectedMode == 5 ? DEF_WAIT : OPENING);
 }
@@ -302,9 +302,44 @@ void runRc() {
     digitalWrite(LED, left || right);
 }
 
+// The DIP switches are followed live while the robot is idle (waiting for
+// START, stopped, or in RC mode). Once a match is running the mode is frozen
+// until it ends, so a nudged switch cannot change the strategy mid-fight.
+void followDipSwitch() {
+    uint8_t dip = MakerSumo.readDipSwitch();
+    if (dip == selectedMode) return;
+    bool idle = selectedMode == 7 || state == ARMING || state == WAIT_START || state == STOPPED;
+    if (!idle) return;
+    selectedMode = dip;
+    stopRobot();
+    if (selectedMode != 7) {          // back to auto: arm again from the start
+        inputAt = millis();
+        inputArmed = false;
+        startedByIr = false;
+        enterState(ARMING);
+    }
+}
+
+// Leave configuration mode: motors unlocked, back to the arming wait so the
+// next START (or IR) runs a match. Called by "CONFIG OFF" and automatically
+// when the host closes the serial port (cable pulled, browser disconnected).
+void exitConfigSession() {
+    configSession = false;
+    stopRobot();
+    selectedMode = MakerSumo.readDipSwitch();
+    inputAt = millis();
+    inputArmed = false;
+    startedByIr = false;
+    enterState(ARMING);
+}
+
 void runRobot() {
     uint32_t now = millis();
-    if (configSession) { stopRobot(); return; }
+    if (configSession) {
+        if (!Serial) { exitConfigSession(); }   // port closed by the host
+        else { stopRobot(); return; }
+    }
+    followDipSwitch();
     if (selectedMode == 7) { runRc(); return; }
 
     bool btn = MakerSumo.isStartPressed();
@@ -335,8 +370,8 @@ void runRobot() {
     }
 
     int16_t *a = config.behaviour;
-    bool edgeL = analogRead(EDGE_L) < edgeLeftThreshold;
-    bool edgeR = analogRead(EDGE_R) < edgeRightThreshold;
+    bool edgeL = MakerSumo.isEdgeDetected(EDGE_L);
+    bool edgeR = MakerSumo.isEdgeDetected(EDGE_R);
     if (state != BACK_REVERSE && state != BACK_TURN && state != BACK_PAUSE && (edgeL || edgeR)) {
         turnRight = edgeL; attacking = false; enterState(BACK_REVERSE); stateAt = now;
     }
@@ -420,6 +455,10 @@ void handleCommand() {
     if (!strcmp(serialLine, "CONFIG ON")) {
         configSession = true; stopRobot(); Serial.println(F("OK CONFIG")); return;
     }
+    if (!strcmp(serialLine, "CONFIG OFF")) {
+        if (configSession) exitConfigSession();
+        Serial.println(F("OK CONFIG OFF")); return;
+    }
     if (!strcmp(serialLine, "GET SENSOR")) {
         Serial.print(F("SENSOR ")); Serial.print(opponents());
         Serial.print(' '); Serial.print(analogRead(EDGE_L));
@@ -441,6 +480,13 @@ void handleCommand() {
     if (!strcmp(serialLine, "GET RC")) {
         Serial.print(F("RC MAP=")); Serial.println(rcChannelsSwapped ? 1 : 0); return;
     }
+    if (!strcmp(serialLine, "GET EDGE")) {
+        int bL, bR, wL, wR;
+        MakerSumo.getEdgeCalibration(bL, bR, wL, wR);
+        Serial.print(F("EDGE ")); Serial.print(bL); Serial.print(' '); Serial.print(bR);
+        Serial.print(' '); Serial.print(wL); Serial.print(' '); Serial.println(wR);
+        return;
+    }
     if (!strcmp(serialLine, "GET AUTO")) { Serial.print(F("AUTO")); printValues(config.behaviour, AUTO_FIELDS); return; }
     if (!strcmp(serialLine, "GET DEF"))  { Serial.print(F("DEF"));  printValues(config.defense, 5); return; }
 
@@ -459,6 +505,15 @@ void handleCommand() {
         EEPROM.commit();
         startBuzzer(true);
         Serial.print(F("OK SAVED RC=")); Serial.println(rcChannelsSwapped ? 1 : 0);
+        return;
+    }
+    if (save && !strcmp(group, "EDGE")) {
+        // SAVE EDGE blackL blackR whiteL whiteR  (readings 0-1023, black > white)
+        if (!parseValues(values, 4)) { Serial.println(F("ERROR VALUE")); return; }
+        for (uint8_t i = 0; i < 4; i++) if (values[i] < 0 || values[i] > 1023) { Serial.println(F("ERROR VALUE")); return; }
+        if (!MakerSumo.saveEdgeCalibration(values[0], values[1], values[2], values[3])) { Serial.println(F("ERROR VALUE")); return; }
+        startBuzzer(true);
+        Serial.println(F("OK SAVED EDGE"));
         return;
     }
     if (save && (!strcmp(group, "F") || !strcmp(group, "B"))) {
@@ -520,6 +575,10 @@ void setup() {
     Serial.begin(115200);
     stopRobot();
     EEPROM.begin(EEPROM_SIZE);
+    // Hold START while powering on to calibrate the edge sensors
+    // (LED on: START on black; LED blinks: START on the white line).
+    if (MakerSumo.isStartPressed()) MakerSumo.calibrateEdgeSensors();
+    MakerSumo.loadEdgeCalibration();
     beginRcCapture();
     loadSettings();
     selectedMode = MakerSumo.readDipSwitch();

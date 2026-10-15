@@ -6,7 +6,7 @@
  ********************************************************************************
  * DESCRIPTION:
  *
- * This example shows how a competition IR start module on the IRST pin
+ * This example shows how IR start module on the IRST pin
  * works: output LOW = waiting, HIGH = START, back to LOW = STOP. Without a
  * module the START button does the same job. Only the LED and buzzer are
  * used here; see Sumo/AutoSumo for the full match flow with motors.

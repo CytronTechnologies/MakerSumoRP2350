@@ -107,6 +107,20 @@ public:
     float   readBatteryVoltage();
     bool    motorFault();        // true if either driver reports a fault
 
+    // Edge sensors. Calibrate once (black surface, then white line); values are
+    // stored in flash (EEPROM 0-11) and reloaded with loadEdgeCalibration().
+    bool calibrateEdgeSensors(); // interactive: LED on -> START on black, LED blink -> START on white
+    bool loadEdgeCalibration();  // false if nothing stored yet
+    bool isEdgeCalibrated() const { return _edgeCalibrated; }
+    void getEdgeCalibration(int &blackL, int &blackR, int &whiteL, int &whiteR) const;
+    bool saveEdgeCalibration(int blackL, int blackR, int whiteL, int whiteR);
+    // Compute thresholds for a match. sensitivity 25-75 places the threshold
+    // between white (low) and black (high); 50 = midway. Without calibration
+    // the current surface is taken as black and sensitivity acts as a percentage.
+    void updateEdgeThresholds(int sensitivity = 50);
+    bool isEdgeDetected(uint8_t pin);   // EDGE_L or EDGE_R, reading below threshold
+    int  edgeThreshold(uint8_t pin);
+
     // Motors (speed -255..255)
     void stop();
     void moveForward(int speed);
@@ -121,6 +135,15 @@ public:
 
     // Re-applies VID/PID/strings. Called by begin(); public for custom use.
     void applyUsbIdentity();
+
+private:
+    int  readEdgeAverage(uint8_t pin, int samples = 32);
+    void waitForStartPress(bool blinkLed);
+    bool _edgeCalibrated = false;
+    int  _blackL = 1023, _blackR = 1023, _whiteL = 0, _whiteR = 0;
+    int  _thresholdL = 0, _thresholdR = 0;
+
+public:
 
     // Prints "DEVICE=... VID=... PID=... LIB=..." to any Stream (Serial).
     // Handy for a HELLO reply or a boot banner.
